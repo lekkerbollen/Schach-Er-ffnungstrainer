@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eröffnungstrainer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{--bg:#f3f1ec;--fg:#1f2421;--card:#fff;--mut:#69706b;--acc:#1f5f4a;--onacc:#fff;--bd:#d9d6cd;--bad:#b3261e;--good:#1f6b3a;--sl:#ecebd3;--sd:#6f8f5a}
+@media (prefers-color-scheme:dark){:root{--bg:#171a18;--fg:#e9ece8;--card:#222623;--mut:#9aa39d;--acc:#6fbf9a;--onacc:#10231a;--bd:#363b37;--bad:#ff8a80;--good:#7fd69a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 Georgia,"Iowan Old Style",serif}
+.app{max-width:520px;margin:0 auto;padding:12px}
+h1{font-size:22px;margin:4px 0 10px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}.top button{min-height:34px;font-size:14px}
+button,select,input,textarea{font:inherit;color:var(--fg)}
+button{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px 12px;min-height:42px;cursor:pointer}
+button.p{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{flex:1}.tabs .on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.row{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.row>*{flex:1}
+select,input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px;min-height:42px;min-width:0;width:100%}
+#board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;aspect-ratio:1;border-radius:6px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.sq{position:relative;display:flex;align-items:center;justify-content:center}
+.l{background:var(--sl)}.d{background:var(--sd)}
+.sel{box-shadow:inset 0 0 0 100px rgba(255,235,60,.55)}
+.hint{box-shadow:inset 0 0 0 100px rgba(80,170,255,.6)}
+.p{font-size:min(10.5vw,54px);line-height:1;font-family:"Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",serif}
+.p.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 1px 1px #000}
+.p.b{color:#151515;text-shadow:0 0 1px rgba(255,255,255,.6)}
+.dot{position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(0,0,0,.28)}
+#msg{min-height:48px;margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--bd)}
+#msg.bad{border-color:var(--bad);color:var(--bad)}#msg.good{border-color:var(--good);color:var(--good)}
+.stat{display:flex;justify-content:space-between;color:var(--mut);font-size:14px;margin:6px 2px}
+.ln{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--bd);border-radius:10px;margin:6px 0;background:var(--card);font-size:15px}
+.ln span{flex:1;cursor:pointer;word-break:break-word}.ln button{min-height:34px;padding:2px 10px}
+.mut{color:var(--mut);font-size:14px}
+details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card)}summary{cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="auth" class="app" hidden>
+  <h1>♞ Eröffnungstrainer</h1>
+  <p class="mut">Profile gelten nur in diesem Browser auf diesem Gerät. Jedes Profil hat eigene Eröffnungen.</p>
+  <div class="row"><input id="un" placeholder="Benutzername" autocomplete="username"></div>
+  <div class="row"><input id="pw" type="password" placeholder="Passwort (mind. 4 Zeichen)" autocomplete="current-password"></div>
+  <div class="row"><button class="p" onclick="auth(false)">Anmelden</button><button onclick="auth(true)">Registrieren</button></div>
+  <div id="am" class="mut"></div>
+</div>
+
+<div id="main" class="app" hidden>
+  <div class="top"><h1>♞ Eröffnungstrainer</h1><button id="who" onclick="logout()"></button></div>
+  <div class="tabs"><button id="tb" onclick="setMode('build')">Aufbauen</button><button id="tt" onclick="setMode('train')">Trainieren</button></div>
+  <div id="bar"></div>
+  <div id="board"></div>
+  <div id="msg"></div>
+  <div id="ctl"></div>
+  <div id="lines"></div>
+  <details id="imp">
+    <summary>PGN importieren · Backup</summary>
+    <div class="row"><textarea id="pg" rows="5" placeholder="PGN hier einfügen …"></textarea></div>
+    <div class="row"><input id="mx" type="number" min="2" max="60" value="16" aria-label="Maximale Halbzüge pro Linie"><button class="p" onclick="importPGN()">Importieren</button></div>
+    <p class="mut">Die Zahl ist die maximale Länge pro Linie in Halbzügen (16 = 8 Züge). Mehrere Partien in einer Datei sind möglich.</p>
+    <div class="row"><input type="file" accept=".pgn,.txt,.json" onchange="readFile(this)"></div>
+    <div class="row"><button onclick="exportJSON()">Backup herunterladen (.json)</button></div>
+    <p class="mut">Eine .json-Backup-Datei kannst du über das Dateifeld wiederherstellen, z. B. auf einem anderen Gerät.</p>
+  </details>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const PC={k:'\u265A\uFE0E',q:'\u265B\uFE0E',r:'\u265C\uFE0E',b:'\u265D\uFE0E',n:'\u265E\uFE0E',p:'\u265F\uFE0E'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=m=>m.map((x,i)=>(i%2?'':(i/2+1)+'.')+x).join(' ');
+const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
+
+/* ---------- Profile / Login (lokal) ---------- */
+let user=null,S={openings:[],sel:null};
+const U=()=>{try{return JSON.parse(ls.get('ot2:users'))||{}}catch(e){return{}}};
+async function hash(pw,salt){
+  const s=salt+pw;
+  if(window.crypto&&crypto.subtle){
+    const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))|0;return String(h);
+}
+async function auth(reg){
+  const n=$('#un').value.trim().toLowerCase(),pw=$('#pw').value,us=U();
+  const m=t=>$('#am').textContent=t;
+  if(!n||pw.length<4)return m('Name eingeben und ein Passwort mit mindestens 4 Zeichen.');
+  if(reg){
+    if(us[n])return m('Dieser Name ist schon vergeben.');
+    const salt=Math.random().toString(36).slice(2);
+    us[n]={salt,h:await hash(pw,salt)};ls.set('ot2:users',JSON.stringify(us));
+  }else if(!us[n]||us[n].h!==await hash(pw,us[n].salt))return m('Name oder Passwort falsch.');
+  login(n);
+}
+function login(n){
+  user=n;ls.set('ot2:cur',n);
+  try{S=JSON.parse(ls.get('ot2:d:'+n))||{openings:[],sel:null}}catch(e){S={openings:[],sel:null}}
+  if(!S.openings.some(o=>o.id===S.sel))S.sel=S.openings[0]?S.openings[0].id:null;
+  $('#auth').hidden=true;$('#main').hidden=false;$('#pw').value='';$('#am').textContent='';
+  $('#who').textContent=n+' · Abmelden';
+  setMode('build');
+}
+function logout(){
+  clearTimeout(timer);T=null;lock=false;user=null;ls.del('ot2:cur');
+  $('#main').hidden=true;$('#auth').hidden=false;
+}
+const store=()=>{if(user)ls.set('ot2:d:'+user,JSON.stringify(S))};
+
+/* ---------- Brett ---------- */
+const G=new Chess();
+let mode='build',flip=false,selSq=null,T=null,lock=false,delArm=false,timer=null;
+const op=()=>S.openings.find(o=>o.id===S.sel);
+function say(t,c){const m=$('#msg');m.className=c||'';m.innerHTML=t}
+
+function drawBoard(hl){
+  const b=G.board();
+  const tg=selSq?G.moves({square:selSq,verbose:true}).map(m=>m.to):[];
+  let h='';
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const rr=flip?7-r:r,cc=flip?7-c:c,sq='abcdefgh'[cc]+(8-rr),p=b[rr][cc];
+    let k='sq '+((rr+cc)%2?'d':'l');
+    if(sq===selSq)k+=' sel';
+    if(hl&&hl.includes(sq))k+=' hint';
+    h+='<div class="'+k+'" data-sq="'+sq+'">'+(p?'<span class="p '+p.color+'">'+PC[p.type]+'</span>':'')+(tg.includes(sq)?'<i class="dot"></i>':'')+'</div>';
+  }
+  $('#board').innerHTML=h;
+}
+$('#board').onclick=e=>{const s=e.target.closest('[data-sq]');if(s)tap(s.dataset.sq)};
+
+function tap(sq){
+  if(lock)return;
+  if(mode==='train'&&!(T&&T.cur))return;
+  if(selSq){
+    const m=G.moves({square:selSq,verbose:true}).find(x=>x.to===sq);
+    if(m){selSq=null;return play(m)}
+  }
+  const p=G.get(sq);
+  selSq=(p&&p.color===G.turn()&&(mode==='build'||p.color===T.color))?sq:null;
+  drawBoard();
+}
+function play(m){
+  if(mode==='build'){G.move({from:m.from,to:m.to,promotion:'q'});drawBoard();buildMsg();return}
+  const exp=T.cur.moves[T.ply];
+  if(m.san===exp){
+    G.move({from:m.from,to:m.to,promotion:'q'});T.ply++;drawBoard();
+    if(T.ply>=T.cur.moves.length)return done();
+    oppMove();
+  }else wrong(exp);
+}
+
+/* ---------- Aufbauen ---------- */
+function buildMsg(){const h=G.history();say(h.length?esc(fmt(h)):'Spiele Züge für beide Seiten und speichere die Linie.')}
+function saveLine(){
+  const o=op(),h=G.history();
+  if(!o)return say('Lege zuerst eine Eröffnung an.','bad');
+  if(!h.length)return say('Spiele zuerst ein paar Züge.','bad');
+  if(o.lines.some(l=>l.moves.join(' ')===h.join(' ')))return say('Diese Linie ist schon gespeichert.','bad');
+  o.lines.push({moves:h});store();ui();
+  say('Gespeichert ✓ Mach ein paar Züge rückgängig und spiele etwas anderes, um einen weiteren Zweig zu speichern.','good');
+}
+function addOpening(){
+  const n=$('#nn').value.trim();if(!n)return;
+  const o={id:'o'+Date.now(),name:n,color:$('#nc').value,lines:[]};
+  S.openings.push(o);S.sel=o.id;store();resetBoard();ui();
+}
+function delLine(i){op().lines.splice(i,1);store();ui()}
+function loadLine(i){G.reset();op().lines[i].moves.forEach(m=>G.move(m));selSq=null;drawBoard();buildMsg()}
+function delOpening(){
+  if(!delArm){delArm=true;ui();return}
+  S.openings=S.openings.filter(o=>o.id!==S.sel);S.sel=S.openings[0]?S.openings[0].id:null;delArm=false;store();resetBoard();ui();
+}
+function resetBoard(){G.reset();selSq=null;flip=op()?op().color==='b':false;drawBoard();if(mode==='build')buildMsg()}
+
+/* ---------- PGN-Import & Backup ---------- */
+function movesOf(chunk){
+  let s=chunk.replace(/^\s*\[.*\]\s*$/gm,' ').replace(/\{[^}]*\}/g,' ').replace(/;.*$/gm,' ');
+  let p;do{p=s;s=s.replace(/\([^()]*\)/g,' ')}while(s!==p);
+  s=s.replace(/\$\d+/g,' ').replace(/\d+\.(\.\.)?/g,' ').replace(/1-0|0-1|1\/2-1\/2|\*/g,' ').replace(/[!?]+/g,'');
+  const g=new Chess(),out=[];
+  for(const t of s.split(/\s+/).filter(Boolean)){const m=g.move(t,{sloppy:true});if(!m)break;out.push(m.san)}
+  return out;
+}
+function importPGN(text){
+  const o=op();
+  if(!o)return say('Lege zuerst eine Eröffnung an und wähle sie aus.','bad');
+  const txt=typeof text==='string'?text:$('#pg').value,mx=+$('#mx').value||16;
+  let n=0;
+  txt.split(/(?=^\[Event )/m).forEach(ch=>{
+    const m=movesOf(ch).slice(0,mx);
+    if(m.length&&!o.lines.some(l=>l.moves.join(' ')===m.join(' '))){o.lines.push({moves:m});n++}
+  });
+  store();ui();
+  say(n?n+' Linie(n) importiert ✓':'Keine neuen Linien gefunden. Prüfe das PGN.',n?'good':'bad');
+}
+function readFile(inp){
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    if(/\.json$/i.test(f.name)){
+      try{const d=JSON.parse(r.result);if(!Array.isArray(d.openings))throw 0;S=d;store();resetBoard();ui();say('Backup wiederhergestellt ✓','good')}
+      catch(e){say('Diese Backup-Datei ist ungültig.','bad')}
+    }else importPGN(r.result);
+    inp.value='';
+  };
+  r.readAsText(f);
+}
+function exportJSON(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));
+  a.download='eroeffnungen-'+user+'.json';a.click();
+}
+
+/* ---------- Trainieren ---------- */
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function startTrain(){
+  const o=op();
+  if(!o||!o.lines.length)return say('Speichere zuerst mindestens eine Linie.','bad');
+  T={color:o.color,queue:shuffle(o.lines.slice()),cur:null,ok:0,fails:0,total:o.lines.length,ply:0};
+  nextLine();
+}
+function nextLine(){
+  clearTimeout(timer);
+  if(!T.queue.length)return finish();
+  T.cur=T.queue.shift();T.ply=0;G.reset();selSq=null;lock=false;
+  flip=T.color==='b';drawBoard();ui();
+  say('Du bist am Zug mit '+(T.color==='w'?'Weiss':'Schwarz')+' …');
+  if(G.turn()!==T.color)oppMove();
+}
+function oppMove(){
+  lock=true;
+  timer=setTimeout(()=>{
+    G.move(T.cur.moves[T.ply]);T.ply++;drawBoard();lock=false;
+    if(T.ply>=T.cur.moves.length)done();
+  },450);
+}
+function done(){T.ok++;lock=true;ui();say('✓ Linie geschafft','good');timer=setTimeout(nextLine,1000)}
+function wrong(exp){
+  lock=true;T.fails++;
+  const em=G.moves({verbose:true}).find(x=>x.san===exp);
+  T.queue.splice(Math.min(T.queue.length,3),0,T.cur);
+  drawBoard(em?[em.from,em.to]:[]);ui();
+  say('✗ Die Linie geht mit <b>'+esc(exp)+'</b> weiter. Sie kommt später wieder.','bad');
+  timer=setTimeout(nextLine,2300);
+}
+function finish(){
+  T.cur=null;lock=false;ui();
+  say('Training beendet 🎉 '+T.total+' Linien gelernt, '+T.fails+' Fehler.','good');
+}
+
+/* ---------- Oberfläche ---------- */
+function setMode(m){
+  mode=m;clearTimeout(timer);lock=false;T=null;delArm=false;
+  $('#imp').hidden=m!=='build';
+  resetBoard();ui();
+  if(m==='train')say(op()?'Drücke Start, um „'+esc(op().name)+'“ zu üben.':'Lege zuerst im Bereich „Aufbauen“ eine Eröffnung an.');
+}
+function pickOpening(v){S.sel=v;store();delArm=false;T=null;clearTimeout(timer);lock=false;resetBoard();ui();if(mode==='train')say('Drücke Start zum Üben.')}
+function ui(){
+  $('#tb').className=mode==='build'?'on':'';$('#tt').className=mode==='train'?'on':'';
+  const o=op();
+  let bar='';
+  if(S.openings.length)bar='<div class="row"><select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+esc(x.name)+' ('+(x.color==='w'?'Weiss':'Schwarz')+', '+x.lines.length+')</option>').join('')+'</select></div>';
+  if(mode==='build')bar+='<div class="row"><input id="nn" placeholder="Neue Eröffnung, z. B. Sizilianisch"><select id="nc" style="flex:0 0 100px"><option value="w">Weiss</option><option value="b">Schwarz</option></select><button class="p" style="flex:0 0 74px" onclick="addOpening()">Neu</button></div>';
+  $('#bar').innerHTML=bar;
+  let c='',l='';
+  if(mode==='build'){
+    c='<div class="row"><button onclick="G.undo();selSq=null;drawBoard();buildMsg()">Zurück</button><button onclick="flip=!flip;drawBoard()">Drehen</button><button onclick="resetBoard()">Neu</button><button class="p" onclick="saveLine()">Linie speichern</button></div>';
+    if(o){
+      l='<div class="stat"><span>'+o.lines.length+' gespeicherte Linie(n) · antippen zum Ansehen</span></div>'+
+        o.lines.map((x,i)=>'<div class="ln"><span onclick="loadLine('+i+')">'+esc(fmt(x.moves))+'</span><button onclick="delLine('+i+')" aria-label="Linie löschen">×</button></div>').join('')+
+        '<div class="row"><button onclick="delOpening()" style="color:var(--bad)">'+(delArm?'Nochmal tippen zum Löschen':'Eröffnung löschen')+'</button></div>';
+    }else l='<p class="mut">Gib oben einen Namen ein und wähle deine Seite. Spiele dann eine Linie auf dem Brett und speichere sie, oder importiere ein PGN.</p>';
+  }else{
+    c='<div class="row"><button class="p" onclick="startTrain()">'+(T?'Neu starten':'Start')+'</button></div>';
+    if(T)l='<div class="stat"><span>Übrig: '+(T.queue.length+(T.cur?1:0))+'</span><span>Gelernt: '+T.ok+'/'+T.total+'</span><span>Fehler: '+T.fails+'</span></div>';
+  }
+  $('#ctl').innerHTML=c;$('#lines').innerHTML=l;
+}
+
+const cur=ls.get('ot2:cur');
+if(cur&&U()[cur])login(cur);else $('#auth').hidden=false;
+</script>
+</body>
+</html>
