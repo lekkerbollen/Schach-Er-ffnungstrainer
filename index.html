@@ -179,8 +179,10 @@ const colDot=()=>'<span class="cd" style="background:'+(nc==='w'?'#fff':'#111')+
 function togColor(b){nc=nc==='w'?'b':'w';b.innerHTML=colDot()}
 function stepBack(){const m=G.undo();if(m)redo.push(m.san);selSq=null;drawBoard();buildMsg()}
 function stepFwd(){if(redo.length){G.move(redo.pop());selSq=null;drawBoard();buildMsg()}}
+function stepStart(){let m;while((m=G.undo()))redo.push(m.san);selSq=null;drawBoard();buildMsg()}
+function stepEnd(){while(redo.length)G.move(redo.pop());selSq=null;drawBoard();buildMsg()}
 /* ---------- Bewertungsleiste (Stockfish im Browser) ---------- */
-let evCp=0,evMt=null,sf=null,sfBusy=false,sfPend=null,sfFen=null,sfOk=false,sfDead=false;
+let evCp=0,evMt=null,sf=null,sfBusy=false,sfPend=null,sfFen=null,sfOk=false,sfDead=false,evWait=true;
 function sfStart(){
   if(sfDead)return;
   try{
@@ -195,8 +197,11 @@ function sfMsg(l){
   if(l==='uciok')sf.postMessage('isready');
   else if(l==='readyok'){sfOk=true;if(sfPend)sfGo()}
   else if(l.startsWith('bestmove')){sfBusy=false;if(sfPend)sfGo()}
-  else if(l.startsWith('info')&&sfFen){
+  else if(l.startsWith('info')&&sfFen&&!sfPend){
+    const d=+((l.match(/ depth (\d+)/)||[])[1]||0);
+    if(d<8||/lowerbound|upperbound/.test(l))return;   // flache/ungenaue Werte ignorieren
     const m=l.match(/score (cp|mate) (-?\d+)/);if(!m)return;
+    evWait=false;
     const v=+m[2]*(sfFen.split(' ')[1]==='b'?-1:1);   // immer aus Sicht von Weiss
     if(m[1]==='cp'){evCp=v;evMt=null}else evMt=v;
     evDraw();
@@ -209,7 +214,7 @@ function evalPos(){
     const mate=G.in_checkmate();evMt=null;evCp=mate?(G.turn()==='b'?4000:-4000):0;
     return evDraw(mate?(evCp>0?'1-0':'0-1'):'½');
   }
-  evDraw();
+  evWait=true;evDraw();
   if(!sf)sfStart();
   if(!sf)return;
   sfPend=G.fen();
@@ -223,7 +228,7 @@ function evDraw(txt){
   const wh=pct>=50,low=wh!==flip;
   t.style.bottom=low?'3px':'auto';t.style.top=low?'auto':'3px';
   t.style.color=wh?'#222':'#eee';
-  t.textContent=txt!==undefined?txt:sfDead?'–':!sfFen?'…':evMt!==null?'M'+Math.abs(evMt):(evCp>=0?'+':'−')+Math.abs(evCp/100).toFixed(1);
+  t.textContent=txt!==undefined?txt:sfDead?'–':evWait?'…':evMt!==null?'M'+Math.abs(evMt):(evCp>=0?'+':'−')+Math.abs(evCp/100).toFixed(1);
 }
 /* ---------- Aufbauen ---------- */
 function buildMsg(){const h=G.history();say(h.length?esc(fmt(h)):'Spiele Züge für beide Seiten und speichere die Linie.');evalPos()}
@@ -352,6 +357,12 @@ function ui(){
   $('#ctl').innerHTML=c;$('#lines').innerHTML=l;
 }
 
+document.addEventListener('keydown',e=>{
+  if(mode!=='build'||$('#main').hidden||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))return;
+  const f={ArrowLeft:stepBack,ArrowRight:stepFwd,ArrowDown:stepStart,ArrowUp:stepEnd}[e.key];
+  if(f){e.preventDefault();f()}
+});
 const cur=ls.get('ot2:cur');
 if(cur&&U()[cur])login(cur);else $('#auth').hidden=false;
 </script>
