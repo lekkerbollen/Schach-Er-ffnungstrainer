@@ -11,13 +11,13 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 Georgia,"Iowan Old Style",serif}
 .app{max-width:520px;margin:0 auto;padding:12px}
-h1{font-size:22px;margin:4px 0 10px}
+h1{font-size:19px;margin:2px 0 6px}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px}.top button{min-height:34px;font-size:14px}
 button,select,input,textarea{font:inherit;color:var(--fg)}
 button{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px 12px;min-height:42px;cursor:pointer}
 button.pri{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
-.tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{flex:1}.tabs .on{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
-.row{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.row>*{flex:1}
+.tabs{display:flex;gap:6px;margin-bottom:6px}.tabs button{flex:1}.tabs .on{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
+.row{display:flex;gap:6px;margin:6px 0;flex-wrap:wrap}.row>*{flex:1}
 select,input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px;min-height:42px;min-width:0;width:100%}
 #board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));width:100%;aspect-ratio:1;border-radius:6px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;overflow:hidden}
@@ -28,7 +28,7 @@ select,input,textarea{background:var(--card);border:1px solid var(--bd);border-r
 .p.w{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000,0 1px 1px #000}
 .p.b{color:#151515;text-shadow:0 0 1px rgba(255,255,255,.6)}
 .dot{position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(0,0,0,.28)}
-#msg{min-height:48px;margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--bd)}
+#msg{min-height:40px;margin:8px 0;padding:8px 12px;border-radius:10px;background:var(--card);border:1px solid var(--bd)}
 #msg.bad{border-color:var(--bad);color:var(--bad)}#msg.good{border-color:var(--good);color:var(--good)}
 .stat{display:flex;justify-content:space-between;color:var(--mut);font-size:14px;margin:6px 2px}
 .ln{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--bd);border-radius:10px;margin:6px 0;background:var(--card);font-size:15px}
@@ -38,12 +38,22 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
 .ib{display:flex;align-items:center;justify-content:center;padding:0;min-height:48px}
 .ib svg,#who svg,.tabs svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 #who{display:flex;align-items:center;gap:6px}#who svg{width:18px;height:18px}
-.tabs button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;min-height:54px}
+.tabs button{display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;min-height:42px}.tabs svg{width:20px;height:20px}
 .stage{display:flex;gap:8px;align-items:flex-start}.stage #board{flex:1;min-width:0}
 #ev{flex:0 0 24px;align-self:stretch;border-radius:4px;background:#262421;position:relative;overflow:hidden}
 #ev i{position:absolute;left:0;right:0;bottom:0;height:50%;background:#f1efe9;transition:height .4s}
 #ev span{position:absolute;left:0;right:0;bottom:3px;text-align:center;font:bold 10px/1 system-ui,sans-serif}
 .cd{width:22px;height:22px;border-radius:50%;border:2px solid var(--fg);display:block}
+.cols{display:flex;flex-direction:column}
+.left,.right{display:contents}
+#bar{order:1}.stage{order:2}#ctl{order:3}#msg{order:4}#lines{order:5}#imp{order:6}
+@media (min-width:760px) and (min-aspect-ratio:5/4){
+  .app{max-width:1120px}
+  .cols{flex-direction:row;align-items:flex-start;gap:28px}
+  .left{display:block;flex:none;width:max(320px,min(600px,calc(100vh - 190px)))}
+  .right{display:block;flex:1;min-width:0}
+  #lines{max-height:calc(100vh - 340px);overflow-y:auto}
+}
 </style>
 </head>
 <body>
@@ -60,10 +70,14 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
 <div id="main" class="app" hidden>
   <div class="top"><h1>♞ Eröffnungstrainer</h1><button id="who" onclick="logout()" aria-label="Abmelden"></button></div>
   <div class="tabs"><button id="tb" onclick="setMode('build')">Aufbauen</button><button id="tt" onclick="setMode('train')">Trainieren</button></div>
-  <div id="bar"></div>
+  <div class="cols">
+  <div class="left">
   <div class="stage"><div id="ev"><i></i><span></span></div><div id="board"></div></div>
-  <div id="msg"></div>
   <div id="ctl"></div>
+  <div id="msg"></div>
+  </div>
+  <div class="right">
+  <div id="bar"></div>
   <div id="lines"></div>
   <details id="imp">
     <summary>PGN importieren · Backup</summary>
@@ -74,6 +88,8 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
     <div class="row"><button onclick="exportJSON()">Backup herunterladen (.json)</button></div>
     <p class="mut">Eine .json-Backup-Datei kannst du über das Dateifeld wiederherstellen, z. B. auf einem anderen Gerät.</p>
   </details>
+  </div>
+  </div>
 </div>
 
 <script>
