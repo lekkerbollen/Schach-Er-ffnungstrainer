@@ -62,6 +62,11 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
   .right{display:block;flex:1;min-width:0}
   #lines{max-height:calc(100vh - 340px);overflow-y:auto}
 }
+.co{position:absolute;font:bold clamp(9px,1.5vw,12px)/1 system-ui,sans-serif;pointer-events:none}
+.co.t{top:3px;left:3px}.co.b{bottom:2px;right:3px}
+.l .co{color:var(--sd)}.d .co{color:var(--sl)}
+.ib.on{color:var(--acc);border-color:var(--acc)}
+.ln.ed{border-color:var(--acc)}
 </style>
 </head>
 <body>
@@ -76,7 +81,7 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
 </div>
 
 <div id="main" class="app" hidden>
-  <div class="top"><h1>♞ Eröffnungstrainer</h1><button id="who" onclick="logout()" aria-label="Abmelden"></button></div>
+  <div class="top"><h1>♞ Eröffnungstrainer</h1><span style="display:flex;gap:6px"><button id="snd" class="ib" style="min-height:34px;width:40px" onclick="togMute()" aria-label="Ton an/aus"></button><button id="who" onclick="logout()" aria-label="Abmelden"></button></span></div>
   <div class="tabs"><button id="tb" onclick="setMode('build')">Aufbauen</button><button id="tt" onclick="setMode('train')">Trainieren</button></div>
   <div class="cols">
   <div class="left">
@@ -118,7 +123,13 @@ const IC={
  play:ic('<path d="M7 4l13 8-13 8z"/>'),
  out:ic('<path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H9"/>'),
  edit:ic('<path d="M4 20l4-1 11-11-3-3L5 16z"/>'),
- target:ic('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>')
+ target:ic('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>'),
+ swap:ic('<path d="M7 7h11l-3-3M17 17H6l3 3"/>'),
+ copy:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>'),
+ paste:ic('<rect x="6" y="5" width="12" height="16" rx="2"/><path d="M9 3h6v4H9z"/>'),
+ bulb:ic('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>'),
+ sound:ic('<path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6"/>'),
+ mute:ic('<path d="M4 9v6h4l5 4V5L8 9zM17 9l4 6M21 9l-4 6"/>')
 };
 const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 
@@ -149,7 +160,7 @@ function login(n){
   try{S=JSON.parse(ls.get('ot2:d:'+n))||{openings:[],sel:null}}catch(e){S={openings:[],sel:null}}
   if(!S.openings.some(o=>o.id===S.sel))S.sel=S.openings[0]?S.openings[0].id:null;
   $('#auth').hidden=true;$('#main').hidden=false;$('#pw').value='';$('#am').textContent='';
-  $('#who').innerHTML=esc(n)+IC.out;
+  $('#who').innerHTML=esc(n)+IC.out;drawSnd();
   setMode('build');
 }
 function logout(){
@@ -158,9 +169,31 @@ function logout(){
 }
 const store=()=>{if(user)ls.set('ot2:d:'+user,JSON.stringify(S))};
 
+/* ---------- Ton (WebAudio, selbst erzeugt) ---------- */
+let muted=ls.get('ot2:mute')==='1',AC=null;
+const drawSnd=()=>{$('#snd').innerHTML=muted?IC.mute:IC.sound};
+function togMute(){muted=!muted;ls.set('ot2:mute',muted?'1':'0');drawSnd()}
+function tone(f,d,t,v,type){
+  if(muted)return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    if(AC.state==='suspended')AC.resume();
+    const o=AC.createOscillator(),g=AC.createGain(),n=AC.currentTime+(t||0);
+    o.type=type||'triangle';o.frequency.setValueAtTime(f,n);o.frequency.exponentialRampToValueAtTime(f*.5,n+d);
+    g.gain.setValueAtTime(v||.2,n);g.gain.exponentialRampToValueAtTime(.001,n+d);
+    o.connect(g);g.connect(AC.destination);o.start(n);o.stop(n+d+.02);
+  }catch(e){}
+}
+function snd(m){
+  if(!m)return;
+  if(m.flags.includes('k')||m.flags.includes('q')){tone(220,.09);tone(180,.09,.12)}
+  else if(m.captured){tone(240,.13,0,.3,'sawtooth');tone(150,.1,.02,.25)}
+  else tone(200,.08);
+  if(/[+#]/.test(m.san))tone(660,.14,.1,.12,'sine');
+}
 /* ---------- Brett ---------- */
 const G=new Chess();
-let mode='build',flip=false,selSq=null,T=null,lock=false,delArm=false,timer=null,redo=[],nc='w';
+let mode='build',flip=false,selSq=null,T=null,lock=false,delArm=false,timer=null,redo=[],nc='w',clip=[],editIdx=null;
 const grp=o=>{const i=o.name.indexOf(' / ');return i>0?o.name.slice(0,i).trim():''};
 const sub=o=>{const i=o.name.indexOf(' / ');return i>0?o.name.slice(i+3).trim():o.name};
 const op=()=>{const v=String(S.sel);return v.startsWith('g:')?S.openings.find(o=>grp(o)===v.slice(2)):S.openings.find(o=>o.id===S.sel)};
@@ -175,7 +208,7 @@ function drawBoard(hl){
     let k='sq '+((rr+cc)%2?'d':'l');
     if(sq===selSq)k+=' sel';
     if(hl&&hl.includes(sq))k+=' hint';
-    h+='<div class="'+k+'" data-sq="'+sq+'">'+(p?'<span class="p '+p.color+'">'+PC[p.type]+'</span>':'')+(tg.includes(sq)?'<i class="dot"></i>':'')+'</div>';
+    h+='<div class="'+k+'" data-sq="'+sq+'">'+(p?'<span class="p '+p.color+'">'+PC[p.type]+'</span>':'')+(tg.includes(sq)?'<i class="dot"></i>':'')+(c===0?'<b class="co t">'+(8-rr)+'</b>':'')+(r===7?'<b class="co b">'+'abcdefgh'[cc]+'</b>':'')+'</div>';
   }
   $('#board').innerHTML=h;
 }
@@ -228,13 +261,8 @@ function tap(sq){
   drawBoard();
 }
 function play(m){
-  if(mode==='build'){G.move({from:m.from,to:m.to,promotion:'q'});redo=[];drawBoard();buildMsg();return}
-  const exp=T.cur.moves[T.ply];
-  if(m.san===exp){
-    G.move({from:m.from,to:m.to,promotion:'q'});T.ply++;drawBoard();
-    if(T.ply>=T.cur.moves.length)return done();
-    oppMove();
-  }else wrong(exp);
+  if(mode==='build'){snd(G.move({from:m.from,to:m.to,promotion:'q'}));redo=[];drawBoard();buildMsg();return}
+  trainMove(m);
 }
 
 const dot=c=>'<span class="cd" style="background:'+(c==='w'?'#fff':'#111')+'"></span>';
@@ -246,7 +274,7 @@ function togOpeningColor(){
 }
 function togColor(b){nc=nc==='w'?'b':'w';b.innerHTML=colDot()}
 function stepBack(){const m=G.undo();if(m)redo.push(m.san);selSq=null;drawBoard();buildMsg()}
-function stepFwd(){if(redo.length){G.move(redo.pop());selSq=null;drawBoard();buildMsg()}}
+function stepFwd(){if(redo.length){snd(G.move(redo.pop()));selSq=null;drawBoard();buildMsg()}}
 function stepStart(){let m;while((m=G.undo()))redo.push(m.san);selSq=null;drawBoard();buildMsg()}
 function stepEnd(){while(redo.length)G.move(redo.pop());selSq=null;drawBoard();buildMsg()}
 /* ---------- Bewertungsleiste (Stockfish im Browser) ---------- */
@@ -309,17 +337,36 @@ function saveLine(){
   say('Gespeichert ✓ Mach ein paar Züge rückgängig und spiele etwas anderes, um einen weiteren Zweig zu speichern.','good');
 }
 function addOpening(){
-  const n=$('#nn').value.trim();if(!n)return;
-  const o={id:'o'+Date.now(),name:n,color:nc,lines:[]};
+  const n=$('#nn').value.trim().replace(/\s*\/\s*/,' / ');if(!n)return;
+  const sib=S.openings.find(x=>grp(x)&&grp(x)===grp({name:n}));
+  const o={id:'o'+Date.now(),name:n,color:sib?sib.color:nc,lines:[]};
   S.openings.push(o);S.sel=o.id;store();resetBoard();ui();
 }
-function delLine(i){op().lines.splice(i,1);store();ui()}
-function loadLine(i){G.reset();redo=[];op().lines[i].moves.forEach(m=>G.move(m));selSq=null;drawBoard();buildMsg()}
+function delLine(i){op().lines.splice(i,1);editIdx=null;store();ui()}
+function renameOpening(){
+  const o=op();if(!o)return;
+  const n=prompt('Neuer Name (Gruppe / Variante):',o.name);
+  if(n&&n.trim()){o.name=n.trim().replace(/\s*\/\s*/,' / ');store();ui()}
+}
+const same=(a,b)=>a.join(' ')===b.join(' ');
+function copyLine(i){const k=op().lines[i].moves,j=clip.findIndex(c=>same(c,k));if(j>=0)clip.splice(j,1);else clip.push(k.slice());ui()}
+function copyAll(){clip=op().lines.map(l=>l.moves.slice());ui();say(clip.length+' Linie(n) kopiert. Wähle eine andere Variante und tippe auf Einfügen.','good')}
+function pasteLines(){
+  const o=op();if(!o||!clip.length)return;
+  let n=0;clip.forEach(l=>{if(!o.lines.some(x=>same(x.moves,l))){o.lines.push({moves:l.slice()});n++}});
+  store();ui();say(n+' Linie(n) eingefügt ✓','good');
+}
+function replaceLine(){
+  const o=op(),h=G.history();
+  if(!o||editIdx===null||!h.length)return;
+  o.lines[editIdx]={moves:h};store();ui();say('Linie ersetzt ✓','good');
+}
+function loadLine(i){editIdx=i;ui();G.reset();redo=[];op().lines[i].moves.forEach(m=>G.move(m));selSq=null;drawBoard();buildMsg()}
 function delOpening(){
   if(!delArm){delArm=true;ui();say('Nochmal tippen, um „'+esc(op().name)+'“ zu löschen.','bad');return}
   S.openings=S.openings.filter(o=>o.id!==S.sel);S.sel=S.openings[0]?S.openings[0].id:null;delArm=false;store();resetBoard();ui();
 }
-function resetBoard(){G.reset();redo=[];selSq=null;flip=op()?op().color==='b':false;drawBoard();if(mode==='build')buildMsg()}
+function resetBoard(){G.reset();redo=[];editIdx=null;selSq=null;flip=op()?op().color==='b':false;drawBoard();if(mode==='build')buildMsg()}
 
 /* ---------- PGN-Import & Backup ---------- */
 function linesOf(chunk){
@@ -388,36 +435,73 @@ function exportJSON(){
 
 /* ---------- Trainieren ---------- */
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function mkTrie(arr){const r={};arr.forEach(l=>{let n=r;l.moves.forEach(m=>{n=n[m]=n[m]||{}})});return r}
+function nodeAt(pre){let n=T.tr[T.color];for(const x of pre){if(!n)return null;n=n[x]}return n||null}
+const tkey=(c,L,i,m)=>c+':'+L.slice(0,i).join(' ')+'|'+m;
 function startTrain(){
   const v=String(S.sel),os=v.startsWith('g:')?S.openings.filter(o=>grp(o)===v.slice(2)):(op()?[op()]:[]);
   const lines=os.flatMap(o=>o.lines.map(l=>({moves:l.moves,color:o.color})));
   if(!lines.length)return say('Speichere zuerst mindestens eine Linie.','bad');
-  T={color:lines[0].color,queue:shuffle(lines),cur:null,ok:0,fails:0,total:lines.length,ply:0};
+  T={color:lines[0].color,queue:shuffle(lines.slice()),all:lines,conf:new Set(),cur:null,fails:0,total:lines.length,ply:0,tries:0,hints:0,bad:false,live:false,
+     tr:{w:mkTrie(lines.filter(l=>l.color==='w')),b:mkTrie(lines.filter(l=>l.color==='b'))}};
   nextLine();
 }
 function nextLine(){
   clearTimeout(timer);
   if(!T.queue.length)return finish();
-  T.cur=T.queue.shift();T.color=T.cur.color;T.ply=0;G.reset();selSq=null;lock=false;
-  flip=T.color==='b';drawBoard();ui();
-  say('Du bist am Zug mit '+(T.color==='w'?'Weiss':'Schwarz')+' …');
-  if(G.turn()!==T.color)oppMove();
+  T.cur=T.queue.shift();T.color=T.cur.color;T.ply=0;T.bad=false;T.tries=0;T.hints=0;T.live=false;
+  G.reset();selSq=null;flip=T.color==='b';drawBoard();ui();say('');
+  adv();
 }
-function oppMove(){
+/* spielt Züge automatisch (schnell = Vorspann), bis du bei einem noch nicht bestätigten Zug dran bist */
+function adv(){
+  const L=T.cur.moves;
+  if(T.ply>=L.length)return endWalk();
+  if(G.turn()===T.color&&!T.conf.has(tkey(T.color,L,T.ply,L[T.ply]))){lock=false;return}
   lock=true;
-  timer=setTimeout(()=>{
-    G.move(T.cur.moves[T.ply]);T.ply++;drawBoard();lock=false;
-    if(T.ply>=T.cur.moves.length)done();
-  },450);
+  timer=setTimeout(()=>{snd(G.move(L[T.ply]));T.ply++;drawBoard();adv()},T.live?450:240);
 }
-function done(){T.ok++;lock=true;ui();say('✓ Linie geschafft','good');timer=setTimeout(nextLine,1000)}
-function wrong(exp){
-  lock=true;T.fails++;
-  const em=G.moves({verbose:true}).find(x=>x.san===exp);
-  T.queue.splice(Math.min(T.queue.length,3),0,T.cur);
-  drawBoard(em?[em.from,em.to]:[]);ui();
-  say('✗ Die Linie geht mit <b>'+esc(exp)+'</b> weiter. Sie kommt später wieder.','bad');
-  timer=setTimeout(nextLine,2300);
+function endWalk(){
+  lock=true;
+  if(T.bad){T.fails++;T.queue.splice(Math.min(T.queue.length,3),0,T.cur);say('Linie beendet. Sie kommt später nochmal.','bad')}
+  else say('✓ Linie geschafft','good');
+  ui();timer=setTimeout(nextLine,1100);
+}
+function trainMove(m){
+  const L=T.cur.moves,pre=L.slice(0,T.ply);
+  if(m.san===L[T.ply])return good(m);
+  const node=nodeAt(pre);
+  if(node&&node[m.san]){                       // anderer Zug aus deinem Repertoire
+    if(T.conf.has(tkey(T.color,L,T.ply,m.san))){drawBoard();return say('Diesen Zug kennst du schon. Gesucht ist eine andere Variante.','bad')}
+    const nm=pre.concat(m.san),has=l=>l.color===T.color&&nm.every((x,i)=>l.moves[i]===x);
+    T.queue.push(T.cur);
+    const qi=T.queue.findIndex(has);
+    T.cur=qi>=0?T.queue.splice(qi,1)[0]:T.all.find(has);
+    return good(m,'✓ Auch ein Zug aus deinem Repertoire.');
+  }
+  wrong();
+}
+function good(m,msg){
+  const L=T.cur.moves;
+  if(!T.tries&&!T.hints)T.conf.add(tkey(T.color,L,T.ply,m.san));
+  snd(G.move({from:m.from,to:m.to,promotion:'q'}));
+  T.ply++;T.tries=0;T.hints=0;T.live=true;selSq=null;drawBoard();say(msg||'',msg?'good':'');
+  adv();
+}
+function wrong(){
+  T.tries++;T.bad=true;tone(110,.25,0,.25,'sawtooth');selSq=null;
+  if(T.tries<3){drawBoard();return say('✗ Das ist nicht dein Zug. Versuch es nochmal ('+T.tries+'/3).','bad')}
+  const e=T.cur.moves[T.ply],m=G.moves({verbose:true}).find(x=>x.san===e);
+  lock=true;drawBoard(m?[m.from,m.to]:[]);say('Der Zug ist <b>'+esc(e)+'</b>.','bad');
+  timer=setTimeout(()=>{snd(G.move(e));T.ply++;T.tries=0;T.hints=0;T.live=true;drawBoard();adv()},1800);
+}
+function hint(){
+  if(mode!=='train'||!T||!T.cur||lock)return;
+  const e=T.cur.moves[T.ply],m=G.moves({verbose:true}).find(x=>x.san===e);
+  if(!m)return;
+  T.hints++;T.bad=true;
+  drawBoard(T.hints>1?[m.from,m.to]:[m.from]);
+  say(T.hints>1?'Hinweis: <b>'+esc(e)+'</b>':'Hinweis: Bewege die markierte Figur.');
 }
 function finish(){
   T.cur=null;lock=false;ui();
@@ -448,17 +532,18 @@ function ui(){
   $('#tb').innerHTML=IC.edit+'<span>Aufbauen</span>';$('#tt').innerHTML=IC.target+'<span>Trainieren</span>';
   const o=op(),nw='<div class="row" style="flex-wrap:nowrap">';
   let bar='';
-  if(o&&mode==='build')bar=nw+'<select onchange="pickOpening(this.value)">'+opts()+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
-  if(mode==='build')bar+=nw+'<input id="nn" placeholder="z. B. London / gegen d5"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
+  if(o&&mode==='build')bar=nw+'<select onchange="pickOpening(this.value)">'+opts()+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button><button class="ib" style="flex:0 0 48px" onclick="renameOpening()" aria-label="Umbenennen">'+IC.edit+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
+  if(mode==='build')bar+=nw+'<input id="nn" placeholder="z. B. London / gegen d5" onkeydown="if(event.keyCode===13)addOpening()"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
   $('#bar').innerHTML=bar;
   let c='',l='';
   if(mode==='build'){
-    c=nw+'<button class="ib" onclick="flip=!flip;drawBoard();evDraw()" aria-label="Brett drehen">'+IC.flip+'</button><button class="ib" onclick="resetBoard()" aria-label="Zurücksetzen">'+IC.reset+'</button><button class="ib" onclick="stepBack()" aria-label="Zug zurück">'+IC.back+'</button><button class="ib" onclick="stepFwd()" aria-label="Zug vor">'+IC.fwd+'</button><button class="pri ib" onclick="saveLine()" aria-label="Linie speichern">'+IC.save+'</button></div>';
-    if(o)l='<div class="stat"><span>'+o.lines.length+' Linien</span></div>'+o.lines.map((x,i)=>'<div class="ln"><span onclick="loadLine('+i+')">'+esc(fmt(x.moves))+'</span><button class="ib" style="min-height:36px;width:40px" onclick="delLine('+i+')" aria-label="Linie löschen">'+IC.trash+'</button></div>').join('');
+    c=nw+'<button class="ib" onclick="flip=!flip;drawBoard();evDraw()" aria-label="Brett drehen">'+IC.flip+'</button><button class="ib" onclick="resetBoard();ui()" aria-label="Zurücksetzen">'+IC.reset+'</button><button class="ib" onclick="stepBack()" aria-label="Zug zurück">'+IC.back+'</button><button class="ib" onclick="stepFwd()" aria-label="Zug vor">'+IC.fwd+'</button><button class="pri ib" onclick="saveLine()" aria-label="Linie speichern">'+IC.save+'</button>'+(editIdx!==null?'<button class="ib" onclick="replaceLine()" aria-label="Gespeicherte Linie ersetzen">'+IC.swap+'</button>':'')+'</div>';
+    if(o)l='<div class="row" style="flex-wrap:nowrap;align-items:center"><span class="mut" style="flex:1">'+o.lines.length+' Linien</span><button class="ib" style="flex:0 0 44px;min-height:36px" onclick="copyAll()" aria-label="Alle Linien kopieren">'+IC.copy+'</button><button class="ib" style="flex:0 0 auto;min-height:36px;padding:0 10px;gap:6px" onclick="pasteLines()" aria-label="Kopierte Linien einfügen">'+IC.paste+'<span>'+clip.length+'</span></button></div>'+
+      o.lines.map((x,i)=>'<div class="ln'+(i===editIdx?' ed':'')+'"><span onclick="loadLine('+i+')">'+esc(fmt(x.moves))+'</span><button class="ib'+(clip.some(c=>same(c,x.moves))?' on':'')+'" style="min-height:36px;width:40px" onclick="copyLine('+i+')" aria-label="Linie kopieren">'+IC.copy+'</button><button class="ib" style="min-height:36px;width:40px" onclick="delLine('+i+')" aria-label="Linie löschen">'+IC.trash+'</button></div>').join('');
     else l='<p class="mut">Name eingeben, Farbe wählen, dann + tippen. Mit „Gruppe / Variante“ ordnest du Eröffnungen in Gruppen.</p>';
   }else{
-    c=o?nw+'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div><select onchange="pickOpening(this.value)" aria-label="Eröffnung">'+opts()+'</select><button class="pri ib" style="flex:0 0 56px" onclick="startTrain()" aria-label="Start">'+(T?IC.reset:IC.play)+'</button></div>':'';
-    if(T)l='<div class="stat"><span>Übrig: '+(T.queue.length+(T.cur?1:0))+'</span><span>Gelernt: '+T.ok+'/'+T.total+'</span><span>Fehler: '+T.fails+'</span></div>';
+    c=o?nw+'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div><select onchange="pickOpening(this.value)" aria-label="Eröffnung">'+opts()+'</select><button class="pri ib" style="flex:0 0 56px" onclick="startTrain()" aria-label="Start">'+(T?IC.reset:IC.play)+'</button>'+(T&&T.cur?'<button class="ib" style="flex:0 0 48px" onclick="hint()" aria-label="Hinweis">'+IC.bulb+'</button>':'')+'</div>':'';
+    if(T)l='<div class="stat"><span>Übrig: '+(T.queue.length+(T.cur?1:0))+'</span><span>Gelernt: '+(T.total-T.queue.length-(T.cur?1:0))+'/'+T.total+'</span><span>Fehler: '+T.fails+'</span></div>';
   }
   $('#ctl').innerHTML=c;$('#lines').innerHTML=l;
 }
