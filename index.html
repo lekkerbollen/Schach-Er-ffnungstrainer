@@ -19,7 +19,7 @@ button.pri{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
 .tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{flex:1}.tabs .on{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
 .row{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.row>*{flex:1}
 select,input,textarea{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:9px;min-height:42px;min-width:0;width:100%}
-#board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));width:100%;aspect-ratio:1;border-radius:6px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+#board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));width:100%;aspect-ratio:1;border-radius:6px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;overflow:hidden}
 .l{background:var(--sl)}.d{background:var(--sd)}
 .sel{box-shadow:inset 0 0 0 100px rgba(255,235,60,.55)}
@@ -152,7 +152,42 @@ function drawBoard(hl){
   }
   $('#board').innerHTML=h;
 }
-$('#board').onclick=e=>{const s=e.target.closest('[data-sq]');if(s)tap(s.dataset.sq)};
+let drag=null,dragged=false;
+$('#board').onclick=e=>{if(dragged)return;const s=e.target.closest('[data-sq]');if(s)tap(s.dataset.sq)};
+$('#board').addEventListener('pointerdown',e=>{
+  if(lock||(e.pointerType==='mouse'&&e.button!==0))return;
+  if(mode==='train'&&!(T&&T.cur))return;
+  const s=e.target.closest('[data-sq]');if(!s)return;
+  const p=G.get(s.dataset.sq);
+  if(!p||p.color!==G.turn()||!(mode==='build'||p.color===T.color))return;
+  drag={sq:s.dataset.sq,x:e.clientX,y:e.clientY,g:null};
+});
+$('#board').addEventListener('pointermove',e=>{
+  if(!drag)return;
+  if(!drag.g){
+    if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<8)return;
+    try{e.currentTarget.setPointerCapture(e.pointerId)}catch(_){}
+    selSq=drag.sq;drawBoard();
+    const o=document.querySelector('#board [data-sq="'+drag.sq+'"] .p');
+    if(!o){drag=null;return}
+    const g=o.cloneNode(true);
+    g.style.cssText='position:fixed;pointer-events:none;z-index:99;transform:translate(-50%,-50%) scale(1.15)';
+    o.style.opacity='.25';
+    document.body.appendChild(g);drag.g=g;
+  }
+  drag.g.style.left=e.clientX+'px';drag.g.style.top=e.clientY+'px';
+});
+function endDrag(e,cancel){
+  if(!drag)return;
+  const d=drag;drag=null;
+  if(!d.g)return;
+  d.g.remove();dragged=true;setTimeout(()=>{dragged=false},60);
+  const t=cancel?null:document.elementFromPoint(e.clientX,e.clientY),to=t&&t.closest('[data-sq]');
+  const m=to&&G.moves({square:d.sq,verbose:true}).find(x=>x.to===to.dataset.sq);
+  if(m){selSq=null;play(m)}else drawBoard();
+}
+$('#board').addEventListener('pointerup',e=>endDrag(e));
+$('#board').addEventListener('pointercancel',e=>endDrag(e,true));
 
 function tap(sq){
   if(lock)return;
@@ -175,7 +210,13 @@ function play(m){
   }else wrong(exp);
 }
 
-const colDot=()=>'<span class="cd" style="background:'+(nc==='w'?'#fff':'#111')+'"></span>';
+const dot=c=>'<span class="cd" style="background:'+(c==='w'?'#fff':'#111')+'"></span>';
+const colDot=()=>dot(nc);
+function togOpeningColor(){
+  const o=op();if(!o)return;
+  o.color=o.color==='w'?'b':'w';store();flip=o.color==='b';ui();drawBoard();
+  say('„'+esc(o.name)+'“ wird jetzt mit '+(o.color==='w'?'Weiss':'Schwarz')+' trainiert.','good');
+}
 function togColor(b){nc=nc==='w'?'b':'w';b.innerHTML=colDot()}
 function stepBack(){const m=G.undo();if(m)redo.push(m.san);selSq=null;drawBoard();buildMsg()}
 function stepFwd(){if(redo.length){G.move(redo.pop());selSq=null;drawBoard();buildMsg()}}
@@ -342,7 +383,7 @@ function ui(){
   $('#tb').innerHTML=IC.edit+'<span>Aufbauen</span>';$('#tt').innerHTML=IC.target+'<span>Trainieren</span>';
   const o=op(),nw='<div class="row" style="flex-wrap:nowrap">';
   let bar='';
-  if(o)bar=nw+'<select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+esc(x.name)+' · '+x.lines.length+'</option>').join('')+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
+  if(o)bar=nw+'<select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('')+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
   if(mode==='build')bar+=nw+'<input id="nn" placeholder="Neue Eröffnung"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
   $('#bar').innerHTML=bar;
   let c='',l='';
