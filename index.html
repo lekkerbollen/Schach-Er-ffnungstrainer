@@ -44,13 +44,21 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
 #ev i{position:absolute;left:0;right:0;bottom:0;height:50%;background:#f1efe9;transition:height .4s}
 #ev span{position:absolute;left:0;right:0;bottom:3px;text-align:center;font:bold 10px/1 system-ui,sans-serif}
 .cd{width:22px;height:22px;border-radius:50%;border:2px solid var(--fg);display:block}
+#main{--chrome:235px;--evw:32px}
+#main[data-mode="build"]{--chrome:345px}
+#main[data-mode="train"]{--evw:0px}
+#main[data-mode="train"] #ev{display:none}
+#msg:empty{visibility:hidden}
 .cols{display:flex;flex-direction:column}
 .left,.right{display:contents}
 #bar{order:1}.stage{order:2}#ctl{order:3}#msg{order:4}#lines{order:5}#imp{order:6}
+.stage{width:min(100%,max(312px,calc(100vh - var(--chrome) + var(--evw))));width:min(100%,max(312px,calc(100dvh - var(--chrome) + var(--evw))));margin:0 auto}
 @media (min-width:760px) and (min-aspect-ratio:5/4){
-  .app{max-width:1120px}
+  .app{max-width:1200px}
+  #main[data-mode="build"],#main[data-mode="train"]{--chrome:245px}
   .cols{flex-direction:row;align-items:flex-start;gap:28px}
-  .left{display:block;flex:none;width:max(320px,min(600px,calc(100vh - 190px)))}
+  .left{display:block;flex:none;width:min(66.667%,max(320px,calc(100vh - var(--chrome) + var(--evw))));width:min(66.667%,max(320px,calc(100dvh - var(--chrome) + var(--evw))))}
+  .stage{width:100%}
   .right{display:block;flex:1;min-width:0}
   #lines{max-height:calc(100vh - 340px);overflow-y:auto}
 }
@@ -389,17 +397,18 @@ function finish(){
 /* ---------- Oberfläche ---------- */
 function setMode(m){
   mode=m;clearTimeout(timer);lock=false;T=null;delArm=false;
-  $('#imp').hidden=m!=='build';$('#ev').style.visibility=m==='build'?'visible':'hidden';
+  $('#main').dataset.mode=m;$('#imp').hidden=m!=='build';$('#ev').style.visibility=m==='build'?'visible':'hidden';
   resetBoard();ui();
-  if(m==='train')say(op()?'Drücke Start, um „'+esc(op().name)+'“ zu üben.':'Lege zuerst im Bereich „Aufbauen“ eine Eröffnung an.');
+  if(m==='train')say(op()?'':'Lege zuerst im Bereich „Aufbauen“ eine Eröffnung an.');
 }
-function pickOpening(v){S.sel=v;store();delArm=false;T=null;clearTimeout(timer);lock=false;resetBoard();ui();if(mode==='train')say('Drücke Start zum Üben.')}
+function pickOpening(v){S.sel=v;store();delArm=false;T=null;clearTimeout(timer);lock=false;resetBoard();ui();if(mode==='train')say('')}
+const opts=()=>S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('');
 function ui(){
   $('#tb').className=mode==='build'?'on':'';$('#tt').className=mode==='train'?'on':'';
   $('#tb').innerHTML=IC.edit+'<span>Aufbauen</span>';$('#tt').innerHTML=IC.target+'<span>Trainieren</span>';
   const o=op(),nw='<div class="row" style="flex-wrap:nowrap">';
   let bar='';
-  if(o)bar=nw+'<select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('')+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
+  if(o&&mode==='build')bar=nw+'<select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('')+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
   if(mode==='build')bar+=nw+'<input id="nn" placeholder="Neue Eröffnung"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
   $('#bar').innerHTML=bar;
   let c='',l='';
@@ -408,7 +417,7 @@ function ui(){
     if(o)l='<div class="stat"><span>'+o.lines.length+' Linien</span></div>'+o.lines.map((x,i)=>'<div class="ln"><span onclick="loadLine('+i+')">'+esc(fmt(x.moves))+'</span><button class="ib" style="min-height:36px;width:40px" onclick="delLine('+i+')" aria-label="Linie löschen">'+IC.trash+'</button></div>').join('');
     else l='<p class="mut">Name eingeben, Farbe wählen, dann + tippen.</p>';
   }else{
-    c='<div class="row"><button class="pri ib" onclick="startTrain()" aria-label="Start">'+(T?IC.reset:IC.play)+'</button></div>';
+    c=o?nw+'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div><select onchange="pickOpening(this.value)" aria-label="Eröffnung">'+opts()+'</select><button class="pri ib" style="flex:0 0 56px" onclick="startTrain()" aria-label="Start">'+(T?IC.reset:IC.play)+'</button></div>':'';
     if(T)l='<div class="stat"><span>Übrig: '+(T.queue.length+(T.cur?1:0))+'</span><span>Gelernt: '+T.ok+'/'+T.total+'</span><span>Fehler: '+T.fails+'</span></div>';
   }
   $('#ctl').innerHTML=c;$('#lines').innerHTML=l;
