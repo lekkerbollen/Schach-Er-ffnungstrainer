@@ -161,7 +161,9 @@ const store=()=>{if(user)ls.set('ot2:d:'+user,JSON.stringify(S))};
 /* ---------- Brett ---------- */
 const G=new Chess();
 let mode='build',flip=false,selSq=null,T=null,lock=false,delArm=false,timer=null,redo=[],nc='w';
-const op=()=>S.openings.find(o=>o.id===S.sel);
+const grp=o=>{const i=o.name.indexOf(' / ');return i>0?o.name.slice(0,i).trim():''};
+const sub=o=>{const i=o.name.indexOf(' / ');return i>0?o.name.slice(i+3).trim():o.name};
+const op=()=>{const v=String(S.sel);return v.startsWith('g:')?S.openings.find(o=>grp(o)===v.slice(2)):S.openings.find(o=>o.id===S.sel)};
 function say(t,c){const m=$('#msg');m.className=c||'';m.innerHTML=t}
 
 function drawBoard(hl){
@@ -387,15 +389,16 @@ function exportJSON(){
 /* ---------- Trainieren ---------- */
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function startTrain(){
-  const o=op();
-  if(!o||!o.lines.length)return say('Speichere zuerst mindestens eine Linie.','bad');
-  T={color:o.color,queue:shuffle(o.lines.slice()),cur:null,ok:0,fails:0,total:o.lines.length,ply:0};
+  const v=String(S.sel),os=v.startsWith('g:')?S.openings.filter(o=>grp(o)===v.slice(2)):(op()?[op()]:[]);
+  const lines=os.flatMap(o=>o.lines.map(l=>({moves:l.moves,color:o.color})));
+  if(!lines.length)return say('Speichere zuerst mindestens eine Linie.','bad');
+  T={color:lines[0].color,queue:shuffle(lines),cur:null,ok:0,fails:0,total:lines.length,ply:0};
   nextLine();
 }
 function nextLine(){
   clearTimeout(timer);
   if(!T.queue.length)return finish();
-  T.cur=T.queue.shift();T.ply=0;G.reset();selSq=null;lock=false;
+  T.cur=T.queue.shift();T.color=T.cur.color;T.ply=0;G.reset();selSq=null;lock=false;
   flip=T.color==='b';drawBoard();ui();
   say('Du bist am Zug mit '+(T.color==='w'?'Weiss':'Schwarz')+' …');
   if(G.turn()!==T.color)oppMove();
@@ -423,26 +426,36 @@ function finish(){
 
 /* ---------- Oberfläche ---------- */
 function setMode(m){
+  if(m==='build'&&String(S.sel).startsWith('g:')){const f=op();S.sel=f?f.id:null}
   mode=m;clearTimeout(timer);lock=false;T=null;delArm=false;
   $('#main').dataset.mode=m;$('#imp').hidden=m!=='build';$('#ev').style.visibility=m==='build'?'visible':'hidden';
   resetBoard();ui();
   if(m==='train')say(op()?'':'Lege zuerst im Bereich „Aufbauen“ eine Eröffnung an.');
 }
 function pickOpening(v){S.sel=v;store();delArm=false;T=null;clearTimeout(timer);lock=false;resetBoard();ui();if(mode==='train')say('')}
-const opts=()=>S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('');
+const opts=()=>{
+  const gs=[];S.openings.forEach(o=>{const g=grp(o);if(g&&!gs.includes(g))gs.push(g)});
+  const opt=o=>'<option value="'+o.id+'"'+(o.id===S.sel?' selected':'')+'>'+(o.color==='w'?'○ ':'● ')+esc(sub(o))+' · '+o.lines.length+'</option>';
+  let h=S.openings.filter(o=>!grp(o)).map(opt).join('');
+  gs.forEach(g=>{
+    const m=S.openings.filter(o=>grp(o)===g);
+    h+='<optgroup label="'+esc(g)+'">'+(mode==='train'?'<option value="g:'+esc(g)+'"'+(S.sel==='g:'+g?' selected':'')+'>Alle Varianten · '+m.reduce((n,o)=>n+o.lines.length,0)+'</option>':'')+m.map(opt).join('')+'</optgroup>';
+  });
+  return h;
+};
 function ui(){
   $('#tb').className=mode==='build'?'on':'';$('#tt').className=mode==='train'?'on':'';
   $('#tb').innerHTML=IC.edit+'<span>Aufbauen</span>';$('#tt').innerHTML=IC.target+'<span>Trainieren</span>';
   const o=op(),nw='<div class="row" style="flex-wrap:nowrap">';
   let bar='';
-  if(o&&mode==='build')bar=nw+'<select onchange="pickOpening(this.value)">'+S.openings.map(x=>'<option value="'+x.id+'"'+(x.id===S.sel?' selected':'')+'>'+(x.color==='w'?'○ ':'● ')+esc(x.name)+' · '+x.lines.length+'</option>').join('')+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
-  if(mode==='build')bar+=nw+'<input id="nn" placeholder="Neue Eröffnung"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
+  if(o&&mode==='build')bar=nw+'<select onchange="pickOpening(this.value)">'+opts()+'</select>'+(mode==='build'?'<button class="ib" style="flex:0 0 48px" onclick="togOpeningColor()" aria-label="Farbe dieser Eröffnung ändern">'+dot(o.color)+'</button>':'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div>')+(mode==='build'?'<button class="ib" style="flex:0 0 48px;'+(delArm?'color:var(--bad);border-color:var(--bad)':'')+'" onclick="delOpening()" aria-label="Eröffnung löschen">'+IC.trash+'</button>':'')+'</div>';
+  if(mode==='build')bar+=nw+'<input id="nn" placeholder="z. B. London / gegen d5"><button class="ib" style="flex:0 0 48px" onclick="togColor(this)" aria-label="Farbe wählen">'+colDot()+'</button><button class="pri ib" style="flex:0 0 48px" onclick="addOpening()" aria-label="Hinzufügen">'+IC.plus+'</button></div>';
   $('#bar').innerHTML=bar;
   let c='',l='';
   if(mode==='build'){
     c=nw+'<button class="ib" onclick="flip=!flip;drawBoard();evDraw()" aria-label="Brett drehen">'+IC.flip+'</button><button class="ib" onclick="resetBoard()" aria-label="Zurücksetzen">'+IC.reset+'</button><button class="ib" onclick="stepBack()" aria-label="Zug zurück">'+IC.back+'</button><button class="ib" onclick="stepFwd()" aria-label="Zug vor">'+IC.fwd+'</button><button class="pri ib" onclick="saveLine()" aria-label="Linie speichern">'+IC.save+'</button></div>';
     if(o)l='<div class="stat"><span>'+o.lines.length+' Linien</span></div>'+o.lines.map((x,i)=>'<div class="ln"><span onclick="loadLine('+i+')">'+esc(fmt(x.moves))+'</span><button class="ib" style="min-height:36px;width:40px" onclick="delLine('+i+')" aria-label="Linie löschen">'+IC.trash+'</button></div>').join('');
-    else l='<p class="mut">Name eingeben, Farbe wählen, dann + tippen.</p>';
+    else l='<p class="mut">Name eingeben, Farbe wählen, dann + tippen. Mit „Gruppe / Variante“ ordnest du Eröffnungen in Gruppen.</p>';
   }else{
     c=o?nw+'<div class="ib" style="flex:0 0 48px">'+dot(o.color)+'</div><select onchange="pickOpening(this.value)" aria-label="Eröffnung">'+opts()+'</select><button class="pri ib" style="flex:0 0 56px" onclick="startTrain()" aria-label="Start">'+(T?IC.reset:IC.play)+'</button></div>':'';
     if(T)l='<div class="stat"><span>Übrig: '+(T.queue.length+(T.cur?1:0))+'</span><span>Gelernt: '+T.ok+'/'+T.total+'</span><span>Fehler: '+T.fails+'</span></div>';
