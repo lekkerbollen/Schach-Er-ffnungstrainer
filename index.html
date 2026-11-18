@@ -89,6 +89,7 @@ details{margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:10px
   <div id="lines"></div>
   <details id="imp">
     <summary>PGN importieren · Backup</summary>
+    <div class="row"><input id="lu" placeholder="Lichess-Studien-Link einfügen"><button class="pri" style="flex:0 0 90px" onclick="importLichess()">Laden</button></div>
     <div class="row"><textarea id="pg" rows="5" placeholder="PGN hier einfügen …"></textarea></div>
     <div class="row"><input id="mx" type="number" min="2" max="60" value="16" aria-label="Maximale Halbzüge pro Linie"><button class="pri" onclick="importPGN()">Importieren</button></div>
     <p class="mut">Die Zahl ist die maximale Länge pro Linie in Halbzügen (16 = 8 Züge). Mehrere Partien in einer Datei sind möglich.</p>
@@ -319,25 +320,51 @@ function delOpening(){
 function resetBoard(){G.reset();redo=[];selSq=null;flip=op()?op().color==='b':false;drawBoard();if(mode==='build')buildMsg()}
 
 /* ---------- PGN-Import & Backup ---------- */
-function movesOf(chunk){
-  let s=chunk.replace(/^\s*\[.*\]\s*$/gm,' ').replace(/\{[^}]*\}/g,' ').replace(/;.*$/gm,' ');
-  let p;do{p=s;s=s.replace(/\([^()]*\)/g,' ')}while(s!==p);
-  s=s.replace(/\$\d+/g,' ').replace(/\d+\.(\.\.)?/g,' ').replace(/1-0|0-1|1\/2-1\/2|\*/g,' ').replace(/[!?]+/g,'');
-  const g=new Chess(),out=[];
-  for(const t of s.split(/\s+/).filter(Boolean)){const m=g.move(t,{sloppy:true});if(!m)break;out.push(m.san)}
+function linesOf(chunk){
+  const s=chunk.replace(/^\s*\[.*\]\s*$/gm,' ').replace(/\{[^}]*\}/g,' ').replace(/;.*$/gm,' ')
+    .replace(/\$\d+/g,' ').replace(/\d+\.(\.\.)?/g,' ').replace(/1-0|0-1|1\/2-1\/2|\*/g,' ').replace(/[!?]+/g,'')
+    .replace(/\(/g,' ( ').replace(/\)/g,' ) ');
+  const build=mv=>{const g=new Chess();mv.forEach(x=>g.move(x));return g};
+  let cur={g:new Chess(),mv:[],stop:false,dead:false};
+  const stack=[],out=[];
+  for(const t of s.split(/\s+/).filter(Boolean)){
+    if(t==='('){                                   // Variante: Alternative zum letzten Zug
+      stack.push(cur);
+      if(cur.dead||cur.stop||!cur.mv.length)cur={g:null,mv:[],stop:true,dead:true};
+      else{const pre=cur.mv.slice(0,-1);cur={g:build(pre),mv:pre,stop:false,dead:false}}
+    }else if(t===')'){
+      if(!cur.dead&&cur.mv.length)out.push(cur.mv);
+      cur=stack.pop()||cur;
+    }else if(!cur.dead&&!cur.stop){
+      const m=cur.g.move(t,{sloppy:true});
+      if(m)cur.mv.push(m.san);else cur.stop=true;
+    }
+  }
+  if(!cur.dead&&cur.mv.length)out.push(cur.mv);
   return out;
 }
 function importPGN(text){
   const o=op();
   if(!o)return say('Lege zuerst eine Eröffnung an und wähle sie aus.','bad');
   const txt=typeof text==='string'?text:$('#pg').value,mx=+$('#mx').value||16;
-  let n=0;
-  txt.split(/(?=^\[Event )/m).forEach(ch=>{
-    const m=movesOf(ch).slice(0,mx);
-    if(m.length&&!o.lines.some(l=>l.moves.join(' ')===m.join(' '))){o.lines.push({moves:m});n++}
-  });
+  const all=[];
+  txt.split(/(?=^\[Event )/m).forEach(ch=>linesOf(ch).forEach(l=>all.push(l.slice(0,mx))));
+  const pre=(x,y)=>x.length<=y.length&&x.every((m,i)=>y[i]===m);
+  const fresh=all.filter((l,i)=>l.length&&!all.some((k,j)=>j!==i&&pre(l,k)&&(k.length>l.length||j<i))&&!o.lines.some(x=>pre(l,x.moves)));
+  fresh.forEach(l=>o.lines.push({moves:l}));
+  const n=fresh.length;
   store();ui();
   say(n?n+' Linie(n) importiert ✓':'Keine neuen Linien gefunden. Prüfe das PGN.',n?'good':'bad');
+}
+async function importLichess(){
+  const m=$('#lu').value.match(/lichess\.org\/study\/([A-Za-z0-9]{8})/);
+  if(!m)return say('Das ist kein Lichess-Studien-Link.','bad');
+  say('Studie wird geladen …');
+  try{
+    const r=await fetch('https://lichess.org/api/study/'+m[1]+'.pgn');
+    if(!r.ok)throw 0;
+    importPGN(await r.text());
+  }catch(e){say('Laden nicht möglich (Studie privat oder blockiert). Exportiere sie auf Lichess als PGN und füge sie unten ein.','bad')}
 }
 function readFile(inp){
   const f=inp.files[0];if(!f)return;
